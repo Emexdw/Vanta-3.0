@@ -25,7 +25,7 @@ import { captureVideoPoster, compressImage, getVideoDuration } from './utils/med
 
 interface AppProps {
   me: User;
-  onSignOut: () => void;
+  onSignOut: () => Promise<void>;
   onProfileUpdated: () => Promise<void>;
 }
 
