@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, CheckCircle2, MapPin, Play, Layers, Bookmark, Grid3X3, Film } from 'lucide-react';
+import { X, CheckCircle2, MapPin, Play, Layers, Bookmark, Grid3X3, Film, Settings, LogOut, ShieldCheck } from 'lucide-react';
 import { Post, User } from '../types';
 import { soundEngine } from '../utils/audioSynth';
 import { useModalBehavior } from '../hooks/useModalBehavior';
@@ -19,7 +19,7 @@ interface UserProfileModalProps {
   onClose: () => void;
   onSelectPost: (post: Post) => void;
   onEditProfile?: () => void;
-  onSignOut?: () => void;
+  onSignOut?: () => void | Promise<void>;
   onMessage?: (user: User) => void;
   onBlock?: (user: User) => void;
   onReportUser?: (user: User) => void;
@@ -44,6 +44,20 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
 }) => {
   const [tab, setTab] = useState<ProfileTab>('posts');
   const [menuOpen, setMenuOpen] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
+  const [logoutError, setLogoutError] = useState<string | null>(null);
+
+  const handleLogout = async () => {
+    if (!onSignOut || loggingOut) return;
+    setLoggingOut(true);
+    setLogoutError(null);
+    try {
+      await onSignOut();
+    } catch {
+      setLogoutError('No se pudo cerrar la sesión. Intentá nuevamente.');
+      setLoggingOut(false);
+    }
+  };
   useModalBehavior(onClose, variant === 'modal');
 
   const items = tab === 'posts' ? posts.filter((p) => p.kind === 'post') : tab === 'clips' ? posts.filter((p) => p.kind === 'clip') : saved;
@@ -73,7 +87,10 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
         <div className="-mt-20 relative z-[1] flex items-end justify-between gap-3">
           <img src={user.avatar} alt={user.username} className="w-36 h-36 sm:w-40 sm:h-40 rounded-full object-cover border-[5px] border-[#111115] bg-black shadow-xl" />
           {isCurrentUser ? (
-            <button onClick={onEditProfile} className="mb-1 px-6 py-2.5 rounded-2xl border border-white/10 bg-[#19191d] text-sm font-medium text-zinc-200 hover:bg-white/10 transition-colors">Tu perfil</button>
+            <div className="mb-1 flex items-center gap-2">
+              <button onClick={onEditProfile} className="px-4 sm:px-6 py-2.5 rounded-2xl border border-white/10 bg-[#19191d] text-sm font-medium text-zinc-200 hover:bg-white/10 transition-colors">Tu perfil</button>
+              <button type="button" onClick={() => { setMenuOpen(true); setLogoutError(null); }} aria-label="Configuración" title="Configuración" className="p-3 rounded-2xl border border-white/10 bg-[#19191d] text-zinc-200 hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-violet-400"><Settings className="w-5 h-5" /></button>
+            </div>
           ) : (
             <div className="mb-1 flex gap-2">
               {onMessage && <button onClick={() => onMessage(user)} className="px-4 py-2.5 rounded-2xl border border-white/15 text-sm text-zinc-200">Mensaje</button>}
@@ -113,13 +130,35 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
     </div>
   );
 
-  if (variant === 'page') return body;
+  const settingsDialog = menuOpen && isCurrentUser && (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm px-4" onClick={() => !loggingOut && setMenuOpen(false)}>
+      <div role="dialog" aria-modal="true" aria-label="Configuración de cuenta" onClick={(e) => e.stopPropagation()} className="w-full max-w-md rounded-3xl border border-white/10 bg-[#17171c] p-5 sm:p-6 text-white shadow-2xl">
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-xl font-semibold">Configuración</h2>
+          <button type="button" aria-label="Cerrar configuración" onClick={() => setMenuOpen(false)} disabled={loggingOut} className="rounded-xl p-2 hover:bg-white/10"><X className="w-5 h-5" /></button>
+        </div>
+        <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.03] p-4 mb-3">
+          <ShieldCheck className="w-5 h-5 text-violet-300" />
+          <div><p className="font-medium text-sm">Cuenta y seguridad</p><p className="text-xs text-zinc-400 mt-1">Sesión iniciada como @{user.username}</p></div>
+        </div>
+        <button type="button" onClick={() => { setMenuOpen(false); onEditProfile?.(); }} className="w-full text-left rounded-2xl border border-white/10 p-4 text-sm hover:bg-white/10 mb-3">Editar mi perfil</button>
+        <div className="border-t border-white/10 pt-4">
+          <button type="button" onClick={handleLogout} disabled={loggingOut || !onSignOut} className="w-full flex items-center justify-center gap-2 rounded-2xl bg-white text-black font-semibold py-3.5 disabled:opacity-50 hover:bg-zinc-200"><LogOut className="w-5 h-5" />{loggingOut ? 'Cerrando sesión...' : 'Cerrar sesión'}</button>
+          {logoutError && <p role="alert" className="mt-3 text-sm text-red-300">{logoutError}</p>}
+          <p className="text-xs text-zinc-500 mt-3 text-center">Cerrar sesión no elimina tu cuenta ni tus publicaciones.</p>
+        </div>
+      </div>
+    </div>
+  );
+
+  if (variant === 'page') return <>{body}{settingsDialog}</>;
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-sm" onClick={onClose}>
       <div onClick={(e) => e.stopPropagation()} role="dialog" aria-label={`Perfil de ${user.username}`} className="relative w-full max-w-md max-h-[92vh] overflow-y-auto no-scrollbar rounded-t-3xl sm:rounded-3xl">
         {body}
       </div>
+      {settingsDialog}
     </div>
   );
 };
