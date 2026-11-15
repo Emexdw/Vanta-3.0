@@ -175,6 +175,27 @@ export default function App({ me, onSignOut, onProfileUpdated }: AppProps) {
     };
   }, [me.id]);
 
+  // Sincronizar notificaciones al volver a la app o abrir Actividad.
+  // Complementa Realtime cuando el navegador suspende la conexión.
+  useEffect(() => {
+    const sync = async () => {
+      if (document.visibilityState !== 'visible') return;
+      try {
+        setNotifications(await api.fetchNotifications(me.id));
+      } catch {
+        // Mantener la última lista visible si falla la red.
+      }
+    };
+    const onFocus = () => { void sync(); };
+    document.addEventListener('visibilitychange', onFocus);
+    window.addEventListener('focus', onFocus);
+    if (activeTab === 'actividad') void sync();
+    return () => {
+      document.removeEventListener('visibilitychange', onFocus);
+      window.removeEventListener('focus', onFocus);
+    };
+  }, [me.id, activeTab]);
+
   // ---------- Mensajes sin leer (tiempo real) ----------
   const refreshUnread = useCallback(() => {
     api.unreadMessages().then(setMessageUnread).catch(() => {});

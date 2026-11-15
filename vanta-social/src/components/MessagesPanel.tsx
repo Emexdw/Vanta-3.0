@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowLeft, MoreHorizontal, Send, Search, SquarePen, X } from 'lucide-react';
+import { ArrowLeft, MoreHorizontal, RefreshCw, Send, Search, SquarePen, X } from 'lucide-react';
 import { ChatMessage, Conversation, User } from '../types';
 import * as api from '../lib/api';
 import { supabase } from '../lib/supabase';
@@ -29,6 +29,8 @@ export const MessagesPanel: React.FC<MessagesPanelProps> = ({ me, startWithUserI
   const [tab, setTab] = useState<ListTab>('inbox');
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loadingList, setLoadingList] = useState(true);
+  const [syncing, setSyncing] = useState(false);
+  const [liveStatus, setLiveStatus] = useState<'connecting' | 'connected' | 'offline'>('connecting');
 
   const [active, setActive] = useState<{ id: string; other: User } | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -50,12 +52,15 @@ export const MessagesPanel: React.FC<MessagesPanelProps> = ({ me, startWithUserI
   useModalBehavior(onClose);
 
   const refreshList = useCallback(async () => {
+    setSyncing(true);
     try {
       setConversations(await api.fetchConversations(me.id));
+      setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudieron cargar los chats.');
     } finally {
       setLoadingList(false);
+      setSyncing(false);
     }
   }, [me.id]);
 
@@ -101,6 +106,21 @@ export const MessagesPanel: React.FC<MessagesPanelProps> = ({ me, startWithUserI
     void refreshList();
   }, [refreshList]);
 
+  // Recuperación si se interrumpe Realtime: refrescar solo con la pestaña visible.
+  useEffect(() => {
+    const refreshVisible = () => {
+      if (document.visibilityState === 'visible') void refreshList();
+    };
+    document.addEventListener('visibilitychange', refreshVisible);
+    window.addEventListener('focus', refreshVisible);
+    const interval = window.setInterval(refreshVisible, 30000);
+    return () => {
+      document.removeEventListener('visibilitychange', refreshVisible);
+      window.removeEventListener('focus', refreshVisible);
+      window.clearInterval(interval);
+    };
+  }, [refreshList]);
+
   // Abrir chat directo desde un perfil
   useEffect(() => {
     if (!startWithUserId) return;
@@ -130,9 +150,11 @@ export const MessagesPanel: React.FC<MessagesPanelProps> = ({ me, startWithUserI
         }
         void refreshList();
       })
-      .subscribe();
+      .subscribe((status) => {
+        setLiveStatus(status === 'SUBSCRIBED' ? 'connected' : status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED' ? 'offline' : 'connecting');
+      });
     return () => {
-      supabase.removeChannel(channel);
+      void supabase.removeChannel(channel);
     };
   }, [me.id, refreshList, onUnreadChange]);
 
@@ -269,6 +291,11 @@ export const MessagesPanel: React.FC<MessagesPanelProps> = ({ me, startWithUserI
             <>
               <h2 className="text-sm font-semibold text-white flex-1">{view === 'new' ? 'Nuevo mensaje' : 'Mensajes'}</h2>
               {view === 'list' && (
+                <button onClick={() => void refreshList()} disabled={syncing} aria-label="Actualizar conversaciones" title="Actualizar conversaciones" className="w-8 h-8 rounded-full flex items-center justify-center text-zinc-300 hover:bg-white/5 disabled:opacity-50">
+                  <RefreshCw className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />
+                </button>
+              )}
+              {view === 'list' && (
                 <button onClick={() => { setQuery(''); setView('new'); }} aria-label="Nuevo mensaje" className="w-8 h-8 rounded-full flex items-center justify-center text-zinc-300 hover:bg-white/5">
                   <SquarePen className="w-4.5 h-4.5" />
                 </button>
@@ -277,6 +304,11 @@ export const MessagesPanel: React.FC<MessagesPanelProps> = ({ me, startWithUserI
           )}
         </div>
 
+        {view === 'list' && liveStatus !== 'connected' && (
+          <p role="status" className="px-4 py-2 text-[11px] text-amber-300 bg-amber-950/20">
+            {liveStatus === 'connecting' ? 'Conectando mensajes en tiempo real…' : 'Conexión en tiempo real interrumpida. Los chats se actualizarán automáticamente o con el botón de actualizar.'}
+          </p>
+        )}
         {error && (
           <p role="alert" className="px-4 py-2 text-xs text-rose-400 bg-rose-950/20 border-b border-rose-900/30">{error}</p>
         )}
