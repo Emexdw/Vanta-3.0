@@ -1,15 +1,16 @@
 import React, { useState } from 'react';
 import { useAuth } from '../lib/auth';
 
-type Mode = 'login' | 'register';
+type Mode = 'login' | 'register' | 'verify';
 
 const inputClass =
   'w-full bg-zinc-900 border border-white/10 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-white/30 transition-colors';
 
 export const AuthScreen: React.FC = () => {
-  const { signIn, signUp } = useAuth();
+  const { signIn, signUp, verifyEmailCode, resendEmailCode } = useAuth();
   const [mode, setMode] = useState<Mode>('login');
   const [email, setEmail] = useState('');
+  const [code, setCode] = useState('');
   const [password, setPassword] = useState('');
   const [username, setUsername] = useState('');
   const [displayName, setDisplayName] = useState('');
@@ -27,13 +28,17 @@ export const AuthScreen: React.FC = () => {
     }
     setBusy(true);
     try {
-      if (mode === 'login') {
+      if (mode === 'verify') {
+        await verifyEmailCode(email, code);
+        setInfo('Correo verificado correctamente.');
+        setMode('login');
+      } else if (mode === 'login') {
         await signIn(email, password);
       } else {
         const { needsConfirmation } = await signUp({ email, password, username, displayName });
         if (needsConfirmation) {
-          setInfo('Cuenta creada. Te enviamos un correo para confirmarla; después podés iniciar sesión.');
-          setMode('login');
+          setInfo('Ingresá el código de 6 dígitos que enviamos a tu correo.');
+          setMode('verify');
         }
       }
     } catch (err) {
@@ -52,6 +57,7 @@ export const AuthScreen: React.FC = () => {
         </div>
 
         <div className="bg-[#111115] border border-white/10 rounded-2xl p-5">
+          {mode === 'verify' && <p className="text-sm text-zinc-300 mb-4">Verificá tu correo: <strong>{email}</strong></p>}
           <div className="flex bg-[#18181b] p-1 rounded-full border border-white/[0.08] mb-5">
             {(['login', 'register'] as Mode[]).map((m) => (
               <button
@@ -72,6 +78,11 @@ export const AuthScreen: React.FC = () => {
           </div>
 
           <form onSubmit={submit} className="space-y-3">
+            {mode === 'verify' && <>
+              <input className={inputClass} inputMode="numeric" pattern="[0-9]{6}" maxLength={6} autoComplete="one-time-code" placeholder="Código de 6 dígitos" value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))} required />
+              <button type="button" disabled={busy} className="text-xs text-violet-300 underline" onClick={async () => { setBusy(true); setError(null); setInfo(null); try { await resendEmailCode(email); setInfo('Código reenviado. Revisá tu correo.'); } catch (e) { setError(e instanceof Error ? e.message : 'No se pudo reenviar.'); } finally { setBusy(false); } }}>Reenviar código</button>
+            </>}
+            {mode !== 'verify' && <>
             {mode === 'register' && (
               <>
                 <input
@@ -112,6 +123,7 @@ export const AuthScreen: React.FC = () => {
               autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
             />
 
+            </>}
             {error && (
               <p role="alert" className="text-xs text-rose-400">
                 {error}
@@ -124,7 +136,7 @@ export const AuthScreen: React.FC = () => {
               disabled={busy}
               className="w-full py-2.5 rounded-xl bg-white text-black text-sm font-semibold hover:bg-zinc-200 active:scale-[0.99] disabled:opacity-50 transition-all"
             >
-              {busy ? 'Un momento...' : mode === 'login' ? 'Entrar' : 'Crear cuenta'}
+              {busy ? 'Un momento...' : mode === 'login' ? 'Entrar' : mode === 'verify' ? 'Verificar correo' : 'Crear cuenta'}
             </button>
           </form>
         </div>

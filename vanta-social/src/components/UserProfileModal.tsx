@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { X, CheckCircle2, MapPin, Play, Layers, Bookmark, Grid3X3, Film, Settings, LogOut, ShieldCheck, Pin, PinOff } from 'lucide-react';
+import { X, CheckCircle2, MapPin, Play, Layers, Bookmark, Grid3X3, Film, Settings, LogOut, ShieldCheck, Pin, PinOff, Ban, ArrowLeft } from 'lucide-react';
 import { Post, User } from '../types';
-import { fetchPinnedPostIds, setPinnedPost } from '../lib/api';
+import { fetchPinnedPostIds, setPinnedPost, fetchFollowList, fetchBlocked, unblockUser } from '../lib/api';
 import { soundEngine } from '../utils/audioSynth';
 import { useModalBehavior } from '../hooks/useModalBehavior';
 import { formatCount } from '../utils/format';
@@ -24,6 +24,8 @@ interface UserProfileModalProps {
   onMessage?: (user: User) => void;
   onBlock?: (user: User) => void;
   onReportUser?: (user: User) => void;
+  onOpenProfile?: (user: User) => void;
+  viewerId: string;
 }
 
 export const UserProfileModal: React.FC<UserProfileModalProps> = ({
@@ -41,9 +43,34 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
   onSignOut,
   onMessage,
   onBlock,
-  onReportUser
+  onReportUser,
+  onOpenProfile,
+  viewerId
 }) => {
   const [tab, setTab] = useState<ProfileTab>('posts');
+  const [followList, setFollowList] = useState<'followers' | 'following' | null>(null);
+  const [followUsers, setFollowUsers] = useState<User[]>([]);
+  const [followError, setFollowError] = useState('');
+  const [blockedOpen, setBlockedOpen] = useState(false);
+  const [blockedUsers, setBlockedUsers] = useState<User[]>([]);
+  const [blockedError, setBlockedError] = useState('');
+  const [unblocking, setUnblocking] = useState<string | null>(null);
+  const openFollowList = async (kind: 'followers' | 'following') => {
+    setFollowList(kind); setFollowUsers([]); setFollowError('');
+    try { setFollowUsers(await fetchFollowList(user.id, kind)); }
+    catch { setFollowError('No se pudo cargar la lista.'); }
+  };
+  const openBlocked = async () => {
+    setBlockedOpen(true); setBlockedError(''); setBlockedUsers([]);
+    try { setBlockedUsers(await fetchBlocked(viewerId)); }
+    catch { setBlockedError('No se pudieron cargar las cuentas bloqueadas.'); }
+  };
+  const removeBlock = async (blocked: User) => {
+    setUnblocking(blocked.id); setBlockedError('');
+    try { await unblockUser(viewerId, blocked.id); setBlockedUsers((users) => users.filter((u) => u.id !== blocked.id)); }
+    catch { setBlockedError('No se pudo desbloquear la cuenta.'); }
+    finally { setUnblocking(null); }
+  };
   const [pinnedIds, setPinnedIds] = useState<string[]>([]);
   const [pinBusy, setPinBusy] = useState<string | null>(null);
   const [pinError, setPinError] = useState<string | null>(null);
@@ -148,7 +175,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
             { label: 'Publicaciones', value: user.postsCount },
             { label: 'Seguidores', value: user.followersCount },
             { label: 'Siguiendo', value: user.followingCount }
-          ].map((stat) => <div key={stat.label}><p className="text-2xl font-semibold text-white tabular-nums">{formatCount(stat.value)}</p><p className="text-sm text-zinc-500 mt-2">{stat.label}</p></div>)}
+          ].map((stat) => <button type="button" key={stat.label} disabled={stat.label === 'Publicaciones'} onClick={() => void openFollowList(stat.label === 'Seguidores' ? 'followers' : 'following')} className="rounded-xl hover:bg-white/5 disabled:cursor-default"><p className="text-2xl font-semibold text-white tabular-nums">{formatCount(stat.value)}</p><p className="text-sm text-zinc-500 mt-2">{stat.label}</p></button>)}
         </div>
 
         <div className="flex -mx-5 sm:-mx-7 mt-0 border-b border-white/[0.08] bg-black/20" role="tablist">
@@ -182,6 +209,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
           <div><p className="font-medium text-sm">Cuenta y seguridad</p><p className="text-xs text-zinc-400 mt-1">Sesión iniciada como @{user.username}</p></div>
         </div>
         <button type="button" onClick={() => { setMenuOpen(false); onEditProfile?.(); }} className="w-full text-left rounded-2xl border border-white/10 p-4 text-sm hover:bg-white/10 mb-3">Editar mi perfil</button>
+        <button type="button" onClick={() => void openBlocked()} className="w-full flex items-center gap-3 text-left rounded-2xl border border-white/10 p-4 text-sm hover:bg-white/10 mb-3"><Ban className="w-5 h-5" />Cuentas bloqueadas</button>
         <div className="border-t border-white/10 pt-4">
           <button type="button" onClick={handleLogout} disabled={loggingOut || !onSignOut} className="w-full flex items-center justify-center gap-2 rounded-2xl bg-white text-black font-semibold py-3.5 disabled:opacity-50 hover:bg-zinc-200"><LogOut className="w-5 h-5" />{loggingOut ? 'Cerrando sesión...' : 'Cerrar sesión'}</button>
           {logoutError && <p role="alert" className="mt-3 text-sm text-red-300">{logoutError}</p>}
@@ -191,7 +219,22 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
     </div>
   );
 
-  if (variant === 'page') return <>{body}{settingsDialog}</>;
+  const peopleDialog = (followList || blockedOpen) && (
+    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/85 px-4" onClick={() => { setFollowList(null); setBlockedOpen(false); }}>
+      <div role="dialog" aria-modal="true" aria-label={blockedOpen ? 'Cuentas bloqueadas' : followList === 'followers' ? 'Seguidores' : 'Siguiendo'} onClick={(e) => e.stopPropagation()} className="w-full max-w-md max-h-[75vh] overflow-y-auto rounded-3xl bg-[#17171c] border border-white/10 p-5 text-white">
+        <div className="flex justify-between items-center mb-5"><h2 className="text-lg font-semibold">{blockedOpen ? 'Cuentas bloqueadas' : followList === 'followers' ? 'Seguidores' : 'Siguiendo'}</h2><button type="button" aria-label="Cerrar" onClick={() => { setFollowList(null); setBlockedOpen(false); }}><X className="w-5 h-5" /></button></div>
+        {(blockedError || followError) && <p role="alert" className="text-sm text-red-300 mb-3">{blockedError || followError}</p>}
+        {(blockedOpen ? blockedUsers : followUsers).length === 0 && !blockedError && !followError && <p className="text-sm text-zinc-400">No hay cuentas para mostrar.</p>}
+        {(blockedOpen ? blockedUsers : followUsers).map((person) => <div key={person.id} className="flex items-center gap-3 py-3 border-b border-white/10">
+          <button type="button" className="flex items-center gap-3 min-w-0 flex-1 text-left" onClick={() => { if (!blockedOpen) { setFollowList(null); onOpenProfile?.(person); } }} disabled={blockedOpen || !onOpenProfile}>
+            <img src={person.avatar} alt="" className="w-11 h-11 rounded-full object-cover" /><span className="min-w-0"><span className="block text-sm truncate">{person.displayName}</span><span className="block text-xs text-zinc-400 truncate">@{person.username}</span></span>
+          </button>
+          {blockedOpen && <button type="button" disabled={unblocking === person.id} onClick={() => void removeBlock(person)} className="px-3 py-2 bg-white text-black text-xs rounded-xl disabled:opacity-50">Desbloquear</button>}
+        </div>)}
+      </div>
+    </div>
+  );
+  if (variant === 'page') return <>{body}{settingsDialog}{peopleDialog}</>;
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-sm" onClick={onClose}>
@@ -199,6 +242,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
         {body}
       </div>
       {settingsDialog}
+      {peopleDialog}
     </div>
   );
 };

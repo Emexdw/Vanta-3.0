@@ -19,6 +19,8 @@ interface AuthState {
   refreshProfile: () => Promise<void>;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (input: SignUpInput) => Promise<{ needsConfirmation: boolean }>;
+  verifyEmailCode: (email: string, code: string) => Promise<void>;
+  resendEmailCode: (email: string) => Promise<void>;
   signOut: () => Promise<void>;
 }
 
@@ -103,6 +105,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return { needsConfirmation: !data.session };
   }, []);
 
+  const verifyEmailCode = useCallback(async (email: string, code: string) => {
+    const { error } = await supabase.auth.verifyOtp({ email: email.trim(), token: code.trim(), type: 'signup' });
+    if (error) throw new Error(translateAuthError(error.message));
+  }, []);
+
+  const resendEmailCode = useCallback(async (email: string) => {
+    const { error } = await supabase.auth.resend({ type: 'signup', email: email.trim() });
+    if (error) throw new Error(translateAuthError(error.message));
+  }, []);
+
   const signOut = useCallback(async () => {
     const { error } = await supabase.auth.signOut();
     if (error) throw error;
@@ -110,8 +122,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const value = useMemo<AuthState>(
-    () => ({ session, profile, booting, profileError, refreshProfile: loadProfile, signIn, signUp, signOut }),
-    [session, profile, booting, profileError, loadProfile, signIn, signUp, signOut]
+    () => ({ session, profile, booting, profileError, refreshProfile: loadProfile, signIn, signUp, verifyEmailCode, resendEmailCode, signOut }),
+    [session, profile, booting, profileError, loadProfile, signIn, signUp, verifyEmailCode, resendEmailCode, signOut]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

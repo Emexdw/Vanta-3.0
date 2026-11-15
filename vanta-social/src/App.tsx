@@ -793,6 +793,8 @@ export default function App({ me, onSignOut, onProfileUpdated }: AppProps) {
             <div className="pb-24">
               <UserProfileModal
                 variant="page"
+                viewerId={me.id}
+                onOpenProfile={(u) => void openProfile(u)}
                 user={me}
                 isCurrentUser
                 posts={myPosts}
@@ -846,6 +848,8 @@ export default function App({ me, onSignOut, onProfileUpdated }: AppProps) {
       {viewingProfile && !(activeTab === 'perfil' && viewingProfile.id === me.id) && (
         <UserProfileModal
           variant="modal"
+          viewerId={me.id}
+          onOpenProfile={(u) => void openProfile(u)}
           user={viewingProfile.id === me.id ? me : viewingProfile}
           isCurrentUser={viewingProfile.id === me.id}
           posts={viewedPosts}

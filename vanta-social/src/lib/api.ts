@@ -242,6 +242,15 @@ export async function fetchRecentFollowers(meId: string, limit = 6): Promise<Use
   return must<{ profile: ProfileRow }[]>(res).map((r) => toUser(r.profile));
 }
 
+export async function fetchFollowList(userId: string, kind: 'followers' | 'following'): Promise<User[]> {
+  const column = kind === 'followers' ? 'following_id' : 'follower_id';
+  const relation = kind === 'followers' ? 'follows_follower_id_fkey' : 'follows_following_id_fkey';
+  const res = await supabase.from('follows')
+    .select(`profile:profiles!${relation}(*)`)
+    .eq(column, userId).order('created_at', { ascending: false }).limit(200);
+  return must<{ profile: ProfileRow }[]>(res).filter((r) => r.profile).map((r) => toUser(r.profile));
+}
+
 // ---------- Seguidores ----------
 export async function fetchFollowingIds(meId: string): Promise<Set<string>> {
   const res = await supabase.from('follows').select('following_id').eq('follower_id', meId).limit(5000);
