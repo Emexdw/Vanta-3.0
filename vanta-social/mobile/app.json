@@ -1,0 +1,36 @@
+{
+  "expo": {
+    "name": "VANTA",
+    "slug": "vanta-social",
+    "scheme": "vanta",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.vanta.social"
+    },
+    "android": {
+      "package": "com.vanta.social",
+      "adaptiveIcon": {
+        "backgroundColor": "#09090b"
+      }
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "VANTA necesita acceso a tus fotos y videos para que puedas compartir contenido.",
+          "cameraPermission": false,
+          "microphonePermission": false
+        }
+      ],
+      "expo-video"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}
