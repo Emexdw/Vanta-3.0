@@ -46,7 +46,7 @@ export const Header: React.FC<HeaderProps> = ({
     <header className="sticky top-0 z-40 w-full bg-[#09090b]/85 backdrop-blur-xl border-b border-white/[0.08] px-4 py-3 transition-colors">
       <div className="max-w-2xl mx-auto flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <span className="font-semibold text-lg tracking-tight text-white">Vanta</span>
+          <img src="/logo.svg" alt="" width="32" height="32" /><span className="font-semibold text-lg tracking-tight text-white">Vanta</span>
           {activeTab !== 'inicio' && (
             <span className="text-xs text-zinc-500 font-medium">
               · {activeTab.charAt(0).toUpperCase() + activeTab.slice(1)}

@@ -21,6 +21,9 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ me, onClose,
   const [bio, setBio] = useState(me.bio);
   const [location, setLocation] = useState(me.location ?? '');
   const [themeColor, setThemeColor] = useState(me.themeColor || '#8b5cf6');
+  const [websiteUrl, setWebsiteUrl] = useState(me.websiteUrl || '');
+  const [profileStyle, setProfileStyle] = useState(me.profileStyle || 'classic');
+  const [bannerStyle, setBannerStyle] = useState(me.bannerStyle || 'aurora');
   const [bannerFile, setBannerFile] = useState<File | null>(null);
   const [bannerPreview, setBannerPreview] = useState(me.bannerUrl || '');
   const bannerRef = useRef<HTMLInputElement>(null);
@@ -87,6 +90,8 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ me, onClose,
     if (!/^[a-z0-9_.]{3,24}$/.test(username)) {
       return setError('Usuario: 3 a 24 caracteres (minúsculas, números, punto o guion bajo).');
     }
+    const link = websiteUrl.trim();
+    if (link && (!/^https:\/\//i.test(link) || link.length > 200)) return setError('El enlace debe comenzar con https:// y tener como máximo 200 caracteres.');
     setBusy(true);
     try {
       let avatarUrl: string | undefined;
@@ -106,7 +111,10 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ me, onClose,
         location: location.trim(),
         avatarUrl,
         bannerUrl,
-        themeColor
+        themeColor,
+        websiteUrl: link,
+        profileStyle,
+        bannerStyle
       });
       await onSaved();
       onClose();
@@ -147,6 +155,16 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ me, onClose,
                 className={`w-9 h-9 rounded-full border-2 ${themeColor === color ? 'border-white scale-110' : 'border-transparent'}`} style={{ backgroundColor: color }} />
             ))}
           </div>
+          <div className="space-y-2 pt-2">
+            <label htmlFor="profile-style" className="text-xs font-semibold text-zinc-300">Diseño del perfil</label>
+            <select id="profile-style" className={field} value={profileStyle} onChange={e => setProfileStyle(e.target.value as typeof profileStyle)}>
+              <option value="classic">Clásico</option><option value="compact">Compacto</option><option value="spotlight">Destacado</option>
+            </select>
+            <label htmlFor="banner-style" className="block text-xs font-semibold text-zinc-300">Fondo de portada (sin imagen)</label>
+            <select id="banner-style" className={field} value={bannerStyle} onChange={e => setBannerStyle(e.target.value as typeof bannerStyle)}>
+              <option value="aurora">Aurora</option><option value="gradient">Degradado</option><option value="minimal">Minimalista</option>
+            </select>
+          </div>
         </section>
         <div className="flex justify-center">
           <button type="button" onClick={() => fileRef.current?.click()} className="relative group" aria-label="Cambiar foto">
@@ -167,6 +185,8 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ me, onClose,
           placeholder="Usuario"
         />
         <textarea className={`${field} resize-none`} rows={3} value={bio} onChange={(e) => setBio(e.target.value)} maxLength={160} placeholder="Biografía" />
+        <label htmlFor="website-url" className="block text-xs font-semibold text-zinc-300">Enlace de tu perfil</label>
+        <input id="website-url" className={field} type="url" value={websiteUrl} onChange={e => setWebsiteUrl(e.target.value)} maxLength={200} placeholder="https://tusitio.com" />
         <input className={field} value={location} onChange={(e) => setLocation(e.target.value)} maxLength={60} placeholder="Ubicación" />
 
         {error && (
