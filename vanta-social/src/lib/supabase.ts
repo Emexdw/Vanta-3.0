@@ -9,3 +9,7 @@ export const isSupabaseConfigured = Boolean(url && anonKey);
 export const supabase = createClient(url ?? 'http://localhost:54321', anonKey ?? 'missing-key', {
   auth: { persistSession: true, autoRefreshToken: true }
 });
+
+export const createRecoveryClient = () => createClient(url ?? 'http://localhost:54321', anonKey ?? 'missing-key', {
+  auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false, storageKey: 'vanta-recovery' }
+});

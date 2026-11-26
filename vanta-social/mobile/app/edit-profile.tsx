@@ -11,12 +11,16 @@ export default function EditProfileScreen() {
   const [name, setName] = useState('');
   const [bio, setBio] = useState('');
   const [banner, setBanner] = useState('');
+  const [background,setBackground]=useState('');
+  const [music,setMusic]=useState('');
   const [color, setColor] = useState(COLORS[0]);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     setName(profile?.display_name || '');
     setBio(profile?.bio || '');
+    setBackground(profile?.background_url || "");
+    setMusic(profile?.music_url || "");
     setBanner(profile?.banner_url || '');
     setColor(profile?.theme_color || COLORS[0]);
   }, [profile?.id]);
@@ -35,12 +39,14 @@ export default function EditProfileScreen() {
     if (bannerUrl && (!/^https:\/\//i.test(bannerUrl) || bannerUrl.length > 2048)) {
       Alert.alert('Portada no válida', 'Usá una URL HTTPS de imagen de hasta 2048 caracteres.'); return;
     }
+    if ([background,music].some(v=>v.trim() && (!/^https:\/\//i.test(v.trim()) || v.length>2048))) {Alert.alert("URL no válida");return;}
     setSaving(true);
     try {
       const { error } = await supabase.from('profiles').update({
         display_name: displayName,
         bio: about,
         banner_url: bannerUrl,
+        background_url:background.trim(), music_url:music.trim(),
         theme_color: color
       }).eq('id', session.user.id);
       if (error) throw error;
@@ -70,6 +76,10 @@ export default function EditProfileScreen() {
         <Text style={styles.label}>URL de portada (HTTPS)</Text>
         <TextInput style={styles.input} value={banner} onChangeText={setBanner} autoCapitalize="none" autoCorrect={false} keyboardType="url" placeholder="https://ejemplo.com/portada.jpg" placeholderTextColor="#71717a" accessibilityLabel="URL de portada" />
         <Text style={styles.hint}>En móvil podés usar una imagen alojada en HTTPS. Desde VANTA web también podés subir una portada.</Text>
+        <Text style={styles.label}>Fondo del perfil (URL HTTPS)</Text>
+        <TextInput style={styles.input} value={background} onChangeText={setBackground} autoCapitalize="none" />
+        <Text style={styles.label}>Música autorizada (URL HTTPS)</Text>
+        <TextInput style={styles.input} value={music} onChangeText={setMusic} autoCapitalize="none" />
         <Text style={styles.label}>Color del perfil</Text>
         <View style={styles.colors}>
           {COLORS.map((item) => <Pressable key={item} onPress={() => setColor(item)} accessibilityRole="radio" accessibilityState={{ selected: item === color }}

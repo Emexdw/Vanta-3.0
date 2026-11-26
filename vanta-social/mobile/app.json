@@ -3,7 +3,7 @@
     "name": "VANTA",
     "slug": "vanta-social",
     "scheme": "vanta",
-    "version": "1.0.0",
+    "version": "4.3.0",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,
@@ -31,6 +31,7 @@
     ],
     "experiments": {
       "typedRoutes": true
-    }
+    },
+    "icon": "./assets/icon.png"
   }
 }

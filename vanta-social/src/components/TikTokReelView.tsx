@@ -7,6 +7,7 @@ import { clipToPost } from '../utils/clips';
 
 interface TikTokReelViewProps {
   clips: ReelClip[];
+  suspended?: boolean;
   isMuted: boolean;
   onToggleMute: () => void;
   isFollowing: (userId: string) => boolean;
@@ -23,6 +24,7 @@ const DOUBLE_TAP_DELAY = 280;
 
 export const TikTokReelView: React.FC<TikTokReelViewProps> = ({
   clips,
+  suspended = false,
   isMuted,
   onToggleMute,
   isFollowing,
@@ -42,6 +44,8 @@ export const TikTokReelView: React.FC<TikTokReelViewProps> = ({
 
   const [activeIndex, setActiveIndex] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
+  const [isVisible, setIsVisible] = useState(true);
+  const [isBuffering, setIsBuffering] = useState(false);
   const [progress, setProgress] = useState(0); // solo el clip activo: evita re-renderizar toda la lista
   const [muteBadge, setMuteBadge] = useState<string | null>(null);
   const [heartBurstId, setHeartBurstId] = useState<string | null>(null);
@@ -72,23 +76,53 @@ export const TikTokReelView: React.FC<TikTokReelViewProps> = ({
       }
     });
     setProgress(0);
+    setIsBuffering(false);
     setIsPaused(false);
   }, [activeIndex]);
+
+  // Pausar al ocultar la pestaña o cuando el reproductor sale de la pantalla.
+  useEffect(() => {
+    const node = containerRef.current;
+    if (!node) return;
+    const updateVisibility = (inViewport: boolean) => setIsVisible(inViewport && !document.hidden);
+    const observer = new IntersectionObserver(([entry]) => updateVisibility(entry.isIntersecting), { threshold: 0.25 });
+    observer.observe(node);
+    const onVisibilityChange = () => {
+      const rect = node.getBoundingClientRect();
+      updateVisibility(rect.bottom > 0 && rect.top < window.innerHeight);
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      observer.disconnect();
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, []);
+
+  const seekActive = (percentage: number) => {
+    const video = videoRefs.current[activeIndex];
+    if (!video || !Number.isFinite(video.duration) || video.duration <= 0) return;
+    const bounded = Math.max(0, Math.min(100, percentage));
+    video.currentTime = video.duration * bounded / 100;
+    setProgress(bounded);
+  };
 
   // Reproducir / pausar sin reiniciar el video
   useEffect(() => {
     const video = videoRefs.current[activeIndex];
     if (!video) return;
-    if (isPaused) {
+    if (isPaused || !isVisible || suspended) {
       video.pause();
     } else {
+      let cancelled = false;
       video.play().catch(() => {
+        if (cancelled) return;
         // El navegador bloqueó el autoplay con sonido: reintenta en silencio
         video.muted = true;
         video.play().catch(() => {});
       });
+      return () => { cancelled = true; video.pause(); };
     }
-  }, [activeIndex, isPaused]);
+  }, [activeIndex, isPaused, isVisible, suspended, clips]);
 
   // Mute: React no actualiza el atributo `muted` después del montaje, hay que hacerlo a mano
   useEffect(() => {
@@ -98,13 +132,13 @@ export const TikTokReelView: React.FC<TikTokReelViewProps> = ({
   }, [isMuted, activeIndex]);
 
   useEffect(() => {
-    if (activeSound && !isPaused && !isMuted) {
+    if (activeSound && !isPaused && isVisible && !isMuted && !suspended) {
       soundEngine.startAmbientLoop(activeSound);
     } else {
       soundEngine.stopAmbientLoop();
     }
     return () => soundEngine.stopAmbientLoop();
-  }, [activeSound, isPaused, isMuted]);
+  }, [activeSound, isPaused, isVisible, isMuted, suspended]);
 
   const handleScroll = () => {
     const container = containerRef.current;
@@ -176,6 +210,12 @@ export const TikTokReelView: React.FC<TikTokReelViewProps> = ({
         {isMuted ? <VolumeX className="w-4 h-4 text-zinc-400" /> : <Volume2 className="w-4 h-4 text-white" />}
       </button>
 
+      {isBuffering && !isPaused && isVisible && (
+        <div role="status" aria-label="Cargando video" className="absolute top-5 left-1/2 -translate-x-1/2 z-40 text-xs text-white bg-black/60 px-3 py-1.5 rounded-full">
+          Cargando…
+        </div>
+      )}
+
       <div
         ref={containerRef}
         onScroll={handleScroll}
@@ -206,13 +246,20 @@ export const TikTokReelView: React.FC<TikTokReelViewProps> = ({
                     poster={clip.posterUrl}
                     playsInline
                     loop
-                    preload="auto"
+                    preload={isActive ? 'auto' : 'metadata'}
+                    muted={isMuted}
+                    onWaiting={() => { if (isActive) setIsBuffering(true); }}
+                    onPlaying={() => { if (isActive) setIsBuffering(false); }}
+                    onCanPlay={() => { if (isActive) setIsBuffering(false); }}
                     onTimeUpdate={(e) => {
                       if (!isActive) return;
                       const vid = e.currentTarget;
                       if (vid.duration) setProgress((vid.currentTime / vid.duration) * 100);
                     }}
-                    onError={() => setVideoLoadError((prev) => ({ ...prev, [clip.id]: true }))}
+                    onError={() => {
+                      if (isActive) setIsBuffering(false);
+                      setVideoLoadError((prev) => ({ ...prev, [clip.id]: true }));
+                    }}
                     className={`w-full h-full object-cover transition-transform duration-700 ${scaleClass}`}
                   />
                 ) : (
@@ -222,6 +269,12 @@ export const TikTokReelView: React.FC<TikTokReelViewProps> = ({
                     draggable={false}
                     className={`w-full h-full object-cover transition-transform duration-700 ${scaleClass}`}
                   />
+                )}
+
+                {isActive && hasError && (
+                  <div role="alert" className="absolute inset-0 flex items-center justify-center text-center text-sm text-white bg-black/60 px-8">
+                    No se pudo reproducir este clip.
+                  </div>
                 )}
 
                 <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-transparent to-black/80 pointer-events-none" />
@@ -393,9 +446,21 @@ export const TikTokReelView: React.FC<TikTokReelViewProps> = ({
                 </div>
               </div>
 
-              <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-white/15 z-30 pointer-events-none">
-                <div className="h-full bg-white transition-all duration-100" style={{ width: `${isActive ? progress : 0}%` }} />
-              </div>
+              {isActive && (
+                <div className="absolute bottom-0 left-0 right-0 z-40 h-5 flex items-end group" onClick={(e) => e.stopPropagation()}>
+                  <input
+                    type="range"
+                    min={0}
+                    max={100}
+                    step={0.1}
+                    value={progress}
+                    onChange={(e) => seekActive(Number(e.target.value))}
+                    aria-label="Progreso del video"
+                    className="w-full h-2 accent-white cursor-pointer bg-white/20"
+                    style={{ touchAction: 'none' }}
+                  />
+                </div>
+              )}
             </div>
           );
         })}

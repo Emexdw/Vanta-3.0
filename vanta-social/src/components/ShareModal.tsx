@@ -1,6 +1,8 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { X, Link2, Share, MessageCircle, Send } from 'lucide-react';
-import { Post } from '../types';
+import { supabase } from '../lib/supabase';
+import * as api from "../lib/api";
+import { Conversation, Post } from '../types';
 import { soundEngine } from '../utils/audioSynth';
 import { useModalBehavior } from '../hooks/useModalBehavior';
 
@@ -10,8 +12,16 @@ interface ShareModalProps {
 }
 
 export const ShareModal: React.FC<ShareModalProps> = ({ post, onClose }) => {
+  const [chats,setChats]=useState<Conversation[]>([]);
+  const [recipient,setRecipient]=useState("");
+  const [sending,setSending]=useState(false);
+  useEffect(()=>{let alive=true; supabase.auth.getUser().then(async ({data})=>{if(data.user){const list=await api.fetchConversations(data.user.id);if(alive)setChats(list);}}).catch(()=>{});return()=>{alive=false;};},[]);
   const [toast, setToast] = useState<string | null>(null);
   useModalBehavior(onClose);
+  const [reposted,setReposted]=useState(false);
+  const [repostBusy,setRepostBusy]=useState(true);
+  useEffect(()=>{let alive=true;setRepostBusy(true);supabase.from('reposts').select('post_id').eq('post_id',post.id).maybeSingle().then(({data,error})=>{if(alive){setReposted(!!data);setRepostBusy(!!error);}});return()=>{alive=false;};},[post.id]);
+  const toggleRepost=async()=>{setRepostBusy(true);try{const {data:{user}}=await supabase.auth.getUser();if(!user)throw new Error('Sin sesión');const {error}=reposted?await supabase.from('reposts').delete().eq('user_id',user.id).eq('post_id',post.id):await supabase.from('reposts').insert({user_id:user.id,post_id:post.id});if(error)throw error;setReposted(!reposted);flash(reposted?'Quitado de tu colección':'Añadido a tu colección');}catch{flash('No se pudo actualizar la colección');}finally{setRepostBusy(false);}};
 
   // App.tsx abre el contenido cuando alguien entra con ?p=ID
   const link = `${window.location.origin}/?p=${post.id}`;
@@ -74,6 +84,8 @@ export const ShareModal: React.FC<ShareModalProps> = ({ post, onClose }) => {
           </div>
         </div>
 
+        <button className="w-full mb-3 py-2 rounded-xl bg-violet-600 text-white text-sm disabled:opacity-50" disabled={repostBusy} onClick={toggleRepost}>{reposted?"Quitar de mi colección de republicaciones":"Añadir a mi colección de republicaciones"}</button>
+        <div className="mb-3 flex gap-2"><select aria-label="Conversación" value={recipient} onChange={e=>setRecipient(e.target.value)} className="min-w-0 flex-1 bg-zinc-900 rounded-xl p-2 text-xs text-white"><option value="">Compartir por chat</option>{chats.map(c=><option key={c.id} value={c.id}>@{c.other.username}</option>)}</select><button disabled={!recipient || sending} className="rounded-xl bg-violet-600 px-3 text-xs text-white disabled:opacity-40" onClick={async()=>{setSending(true);try{const {data}=await supabase.auth.getUser();if(!data.user)throw Error();await api.sendMessage(recipient,data.user.id,link);flash("Enviado");}catch{flash("No se pudo enviar");}finally{setSending(false);}}}>Enviar</button></div>
         <div className="grid grid-cols-3 gap-2">
           <button onClick={copyLink} className={btn}>
             <Link2 className="w-5 h-5" />

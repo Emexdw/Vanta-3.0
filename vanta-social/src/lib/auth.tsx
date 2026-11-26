@@ -19,6 +19,8 @@ interface AuthState {
   refreshProfile: () => Promise<void>;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (input: SignUpInput) => Promise<{ needsConfirmation: boolean }>;
+  verifyEmailCode: (email: string, code: string) => Promise<void>;
+  resendEmailCode: (email: string) => Promise<void>;
   signOut: () => Promise<void>;
 }
 
@@ -32,6 +34,7 @@ function translateAuthError(message: string): string {
   if (m.includes('already registered') || m.includes('already been registered')) return 'Ya existe una cuenta con ese correo.';
   if (m.includes('email not confirmed')) return 'Confirmá tu correo antes de entrar. Revisá tu bandeja de entrada.';
   if (m.includes('password should be')) return 'La contraseña es demasiado débil.';
+  if (m.includes('expired') || m.includes('invalid otp')) return 'Código inválido o vencido. Solicitá uno nuevo.';
   if (m.includes('rate limit')) return 'Demasiados intentos. Esperá unos minutos.';
   if (m.includes('invalid email')) return 'El correo no es válido.';
   return message;
@@ -103,6 +106,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return { needsConfirmation: !data.session };
   }, []);
 
+  const verifyEmailCode = useCallback(async (email: string, code: string) => {
+    const { error } = await supabase.auth.verifyOtp({ email: email.trim(), token: code.trim(), type: 'email' });
+    if (error) throw new Error(translateAuthError(error.message));
+  }, []);
+
+  const resendEmailCode = useCallback(async (email: string) => {
+    const { error } = await supabase.auth.resend({ type: 'signup', email: email.trim() });
+    if (error) throw new Error(translateAuthError(error.message));
+  }, []);
+
   const signOut = useCallback(async () => {
     const { error } = await supabase.auth.signOut();
     if (error) throw error;
@@ -110,8 +123,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const value = useMemo<AuthState>(
-    () => ({ session, profile, booting, profileError, refreshProfile: loadProfile, signIn, signUp, signOut }),
-    [session, profile, booting, profileError, loadProfile, signIn, signUp, signOut]
+    () => ({ session, profile, booting, profileError, refreshProfile: loadProfile, signIn, signUp, verifyEmailCode, resendEmailCode, signOut }),
+    [session, profile, booting, profileError, loadProfile, signIn, signUp, verifyEmailCode, resendEmailCode, signOut]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

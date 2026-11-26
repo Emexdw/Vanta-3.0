@@ -9,3 +9,7 @@ export const isSupabaseConfigured = Boolean(url && key);
 export const supabase = createClient(url || 'https://example.supabase.co', key || 'missing-key', {
   auth: { storage: localStorage, autoRefreshToken: true, persistSession: true, detectSessionInUrl: false }
 });
+
+export const createRecoveryClient = () => createClient(url || 'https://example.supabase.co', key || 'missing-key', {
+  auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false, storageKey: 'vanta-recovery' }
+});

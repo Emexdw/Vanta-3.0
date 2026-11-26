@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { router } from 'expo-router';
-import { ActivityIndicator, Alert, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useAuth } from '../../src/auth/AuthProvider';
 import { supabase } from '../../src/lib/supabase';
 
@@ -35,6 +35,7 @@ export default function ProfileScreen() {
       </View>
 
       <View style={s.content}>
+        {!!profile?.background_url && <Image source={{uri:profile.background_url}} style={[StyleSheet.absoluteFillObject,{opacity:.22}]} resizeMode="cover"/>}
         <View style={s.identityRow}>
           {profile?.avatar_url ? <Image source={{ uri: profile.avatar_url }} style={s.avatar} /> : <View style={[s.avatar, s.avatarFallback]}><Text style={s.avatarText}>{initial}</Text></View>}
           <Pressable style={s.profileButton} onPress={() => router.push('/edit-profile')}><Text style={s.profileButtonText}>Tu perfil</Text></Pressable>
@@ -46,6 +47,7 @@ export default function ProfileScreen() {
             {profile?.is_verified && <Text style={s.verified}>✓</Text>}
           </View>
           <Text style={s.handle}>@{profile?.username || 'usuario'}</Text>
+          {!!profile?.music_url && /^https:\/\//i.test(profile.music_url) && <Pressable onPress={()=>Linking.openURL(profile.music_url!).catch(()=>Alert.alert("No se pudo abrir la música"))}><Text style={s.handle}>♫ Abrir música del perfil</Text></Pressable>}
           {!!profile?.bio && <Text style={s.bio}>{profile.bio}</Text>}
         </View>
 

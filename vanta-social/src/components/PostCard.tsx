@@ -25,6 +25,7 @@ interface PostCardProps {
   onOpenProfile: (username: string) => void;
   onPlayClip?: (post: Post) => void;
   onReport?: (post: Post) => void;
+  onEdit?: (post: Post) => void;
   onDelete?: (post: Post) => void;
   isOwner?: boolean;
 }
@@ -40,6 +41,7 @@ export const PostCard: React.FC<PostCardProps> = ({
   onOpenProfile,
   onPlayClip,
   onReport,
+  onEdit,
   onDelete,
   isOwner = false
 }) => {
@@ -161,6 +163,7 @@ export const PostCard: React.FC<PostCardProps> = ({
                 >
                   Compartir
                 </button>
+                {isOwner && post.kind === "post" && onEdit && <button className="w-full text-left px-3 py-2 text-xs text-zinc-300 hover:bg-white/5 rounded-lg" onClick={() => {setShowOptionsMenu(false); onEdit(post);}}>Editar publicación</button>}
                 {isOwner ? (
                   <button
                     onClick={() => {
@@ -283,7 +286,7 @@ export const PostCard: React.FC<PostCardProps> = ({
 
       {post.mediaUrls.length > 1 && (
         <div className="grid grid-cols-4 gap-2 mt-2">
-          {post.mediaUrls.slice(0, 3).map((url, idx) => (
+          {post.mediaUrls.map((url, idx) => (
             <button
               key={idx}
               onClick={() => {

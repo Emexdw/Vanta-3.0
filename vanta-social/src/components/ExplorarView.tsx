@@ -13,17 +13,21 @@ interface ExplorarViewProps {
   onToggleFollow: (userId: string) => void;
 }
 
-type Filter = 'all' | 'post' | 'clip';
+type Filter = 'all' | 'post' | 'clip' | 'people';
+type Sort = 'popular' | 'recent';
 const FILTERS: { id: Filter; label: string }[] = [
   { id: 'all', label: 'Todo' },
   { id: 'post', label: 'Fotos' },
-  { id: 'clip', label: 'Clips' }
+  { id: 'clip', label: 'Clips' },
+  { id: 'people', label: 'Personas' }
 ];
 
 export const ExplorarView: React.FC<ExplorarViewProps> = ({ meId, onOpenProfile, onOpenPost, isFollowing, onToggleFollow }) => {
   const [query, setQuery] = useState('');
   const [debounced, setDebounced] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
+  const [sort, setSort] = useState<Sort>('popular');
+  const [retryCount, setRetryCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -65,15 +69,15 @@ export const ExplorarView: React.FC<ExplorarViewProps> = ({ meId, onOpenProfile,
       try {
         if (debounced) {
           const [posts, profiles] = await Promise.all([
-            api.searchPosts(meId, debounced),
-            debounced.startsWith('#') ? Promise.resolve([] as User[]) : api.searchProfiles(debounced.replace(/^@/, ''))
+            filter === 'people' ? Promise.resolve([] as Post[]) : api.searchPosts(meId, debounced),
+            debounced.startsWith('#') || (filter !== 'all' && filter !== 'people') ? Promise.resolve([] as User[]) : api.searchProfiles(debounced.replace(/^@/, ''))
           ]);
           if (!cancelled) {
             setGrid(posts);
             setPeople(profiles);
           }
         } else {
-          const posts = await api.fetchPosts({ meId, popular: true, limit: 30 });
+          const posts = filter === 'people' ? [] : await api.fetchPosts({ meId, popular: sort === 'popular', limit: 30 });
           if (!cancelled) {
             setGrid(posts);
             setPeople([]);
@@ -88,9 +92,13 @@ export const ExplorarView: React.FC<ExplorarViewProps> = ({ meId, onOpenProfile,
     return () => {
       cancelled = true;
     };
-  }, [debounced, meId]);
+  }, [debounced, meId, filter, sort, retryCount]);
 
-  const visible = grid.filter((p) => filter === 'all' || p.kind === filter);
+  const visible = grid.filter((p) => filter === 'all' || p.kind === filter)
+    .sort((a, b) => sort === 'recent'
+      ? new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      : b.likesCount - a.likesCount);
+  const showPeople = filter === 'people' || filter === 'all';
 
   const followBtn = (u: User) => {
     const on = isFollowing(u.id);
@@ -171,7 +179,7 @@ export const ExplorarView: React.FC<ExplorarViewProps> = ({ meId, onOpenProfile,
         </section>
       )}
 
-      {people.length > 0 && (
+      {showPeople && people.length > 0 && (
         <section>
           <h2 className="text-sm font-semibold text-white mb-2.5">Personas</h2>
           <ul className="space-y-1.5">
@@ -192,7 +200,8 @@ export const ExplorarView: React.FC<ExplorarViewProps> = ({ meId, onOpenProfile,
       )}
 
       <section>
-        <div data-no-swipe className="flex gap-2 mb-3">
+        <div data-no-swipe className="flex flex-wrap items-center justify-between gap-2 mb-3">
+          <div className="flex flex-wrap gap-2">
           {FILTERS.map((f) => (
             <button
               key={f.id}
@@ -208,12 +217,21 @@ export const ExplorarView: React.FC<ExplorarViewProps> = ({ meId, onOpenProfile,
               {f.label}
             </button>
           ))}
+          </div>
+          {filter !== 'people' && (
+            <div className="flex items-center gap-1 rounded-full border border-white/10 p-1" aria-label="Orden de resultados">
+              <button onClick={() => setSort('popular')} aria-pressed={sort === 'popular'} className={`rounded-full px-2.5 py-1 text-[11px] ${sort === 'popular' ? 'bg-white text-black' : 'text-zinc-400'}`}>Populares</button>
+              <button onClick={() => setSort('recent')} aria-pressed={sort === 'recent'} className={`rounded-full px-2.5 py-1 text-[11px] ${sort === 'recent' ? 'bg-white text-black' : 'text-zinc-400'}`}>Recientes</button>
+            </div>
+          )}
         </div>
 
         {error ? (
-          <p role="alert" className="py-10 text-center text-xs text-rose-400">{error}</p>
+          <div role="alert" className="py-10 text-center space-y-3"><p className="text-xs text-rose-400">{error}</p><button className="text-xs px-4 py-2 rounded-full border border-white/20 text-white" onClick={() => setRetryCount((n) => n + 1)}>Reintentar búsqueda</button></div>
         ) : loading ? (
           <p className="py-10 text-center text-xs text-zinc-500">Cargando...</p>
+        ) : filter === 'people' ? (
+          <p className="py-8 text-center text-xs text-zinc-500">{debounced ? (people.length ? 'Resultados de personas arriba.' : 'No se encontraron personas. Probá otro nombre.') : 'Escribí un nombre o @usuario para buscar personas.'}</p>
         ) : visible.length === 0 ? (
           <div className="py-12 text-center">
             <p className="text-sm text-zinc-300 font-medium">{debounced ? `Sin resultados para “${debounced}”` : 'Todavía no hay contenido'}</p>
