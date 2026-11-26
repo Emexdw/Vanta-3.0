@@ -10,7 +10,12 @@ interface ProfileRow {
   display_name: string;
   avatar_url: string;
   banner_url?: string | null;
+  background_url?: string | null;
+  music_url?: string | null;
   theme_color?: string | null;
+  website_url?: string | null;
+  profile_style?: string | null;
+  banner_style?: string | null;
   bio: string;
   location: string;
   is_verified: boolean;
@@ -129,7 +134,12 @@ export function toUser(r: ProfileRow): User {
     bio: r.bio,
     location: r.location || undefined,
     bannerUrl: r.banner_url || undefined,
-    themeColor: r.theme_color || undefined
+    backgroundUrl: r.background_url || undefined,
+    musicUrl: r.music_url || undefined,
+    themeColor: r.theme_color || undefined,
+    websiteUrl: r.website_url || undefined,
+    profileStyle: (r.profile_style || 'classic') as User['profileStyle'],
+    bannerStyle: (r.banner_style || 'aurora') as User['bannerStyle']
   };
 }
 
@@ -194,7 +204,7 @@ export async function isUsernameAvailable(username: string): Promise<boolean> {
 
 export async function updateProfile(
   meId: string,
-  patch: { username?: string; displayName?: string; bio?: string; location?: string; avatarUrl?: string; bannerUrl?: string; themeColor?: string }
+  patch: { username?: string; displayName?: string; bio?: string; location?: string; avatarUrl?: string; bannerUrl?: string; backgroundUrl?: string; musicUrl?: string; themeColor?: string; websiteUrl?: string; profileStyle?: string; bannerStyle?: string }
 ): Promise<void> {
   const row: Record<string, string> = {};
   if (patch.username !== undefined) row.username = patch.username.toLowerCase();
@@ -202,8 +212,13 @@ export async function updateProfile(
   if (patch.bio !== undefined) row.bio = patch.bio;
   if (patch.location !== undefined) row.location = patch.location;
   if (patch.avatarUrl !== undefined) row.avatar_url = patch.avatarUrl;
+  if (patch.backgroundUrl !== undefined) row.background_url = patch.backgroundUrl;
+  if (patch.musicUrl !== undefined) row.music_url = patch.musicUrl;
   if (patch.bannerUrl !== undefined) row.banner_url = patch.bannerUrl;
   if (patch.themeColor !== undefined) row.theme_color = patch.themeColor;
+  if (patch.websiteUrl !== undefined) row.website_url = patch.websiteUrl;
+  if (patch.profileStyle !== undefined) row.profile_style = patch.profileStyle;
+  if (patch.bannerStyle !== undefined) row.banner_style = patch.bannerStyle;
   const { error } = await supabase.from('profiles').update(row).eq('id', meId);
   if (error) {
     if (error.code === '23505') throw new Error('Ese nombre de usuario ya está en uso.');
@@ -231,6 +246,15 @@ export async function fetchRecentFollowers(meId: string, limit = 6): Promise<Use
     .order('created_at', { ascending: false })
     .limit(limit);
   return must<{ profile: ProfileRow }[]>(res).map((r) => toUser(r.profile));
+}
+
+export async function fetchFollowList(userId: string, kind: 'followers' | 'following'): Promise<User[]> {
+  const column = kind === 'followers' ? 'following_id' : 'follower_id';
+  const relation = kind === 'followers' ? 'follows_follower_id_fkey' : 'follows_following_id_fkey';
+  const res = await supabase.from('follows')
+    .select(`profile:profiles!${relation}(*)`)
+    .eq(column, userId).order('created_at', { ascending: false }).limit(200);
+  return must<{ profile: ProfileRow }[]>(res).filter((r) => r.profile).map((r) => toUser(r.profile));
 }
 
 // ---------- Seguidores ----------
@@ -312,6 +336,11 @@ export async function setBookmark(meId: string, postId: string, saved: boolean):
   if (res.error) fail(res.error);
 }
 
+export async function editPost(postId: string, meId: string, caption: string, location: string, tags: string[]): Promise<void> {
+  const {error} = await supabase.from("posts").update({caption, location, tags}).eq("id",postId).eq("user_id",meId).select("id").single();
+  if(error) fail(error);
+}
+
 export async function deletePost(postId: string): Promise<void> {
   const { error } = await supabase.from('posts').delete().eq('id', postId);
   if (error) fail(error);
@@ -325,7 +354,8 @@ export async function reportPost(meId: string, postId: string, reason = 'other')
 }
 
 export async function incrementViews(postId: string): Promise<void> {
-  await supabase.rpc('increment_views', { target: postId });
+  const { error } = await supabase.rpc('increment_views', { target: postId });
+  if (error) throw error;
 }
 
 // ---------- Subida y creación ----------
@@ -649,4 +679,21 @@ export async function deleteMyAccount(meId: string): Promise<void> {
   }
   const { error } = await supabase.rpc('delete_my_account');
   if (error) fail(error);
+}
+
+// ---------- Publicaciones fijadas (máximo tres, validado también en SQL) ----------
+export async function fetchPinnedPostIds(userId: string): Promise<string[]> {
+  const res = await supabase.from('profile_pins').select('post_id').eq('user_id', userId)
+    .order('pinned_at', { ascending: false });
+  return must<{ post_id: string }[]>(res).map((row) => row.post_id);
+}
+
+export async function setPinnedPost(userId: string, postId: string, pin: boolean): Promise<void> {
+  const res = pin
+    ? await supabase.from('profile_pins').insert({ user_id: userId, post_id: postId })
+    : await supabase.from('profile_pins').delete().eq('user_id', userId).eq('post_id', postId);
+  if (res.error) {
+    if (res.error.message.includes('pin_limit_reached')) throw new Error('Solo podés fijar hasta tres publicaciones.');
+    fail(res.error);
+  }
 }

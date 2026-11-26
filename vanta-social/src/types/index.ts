@@ -10,7 +10,12 @@ export interface User {
   bio: string;
   location?: string;
   bannerUrl?: string;
+  backgroundUrl?: string;
+  musicUrl?: string;
   themeColor?: string;
+  websiteUrl?: string;
+  profileStyle?: 'classic' | 'compact' | 'spotlight';
+  bannerStyle?: 'aurora' | 'gradient' | 'minimal';
 }
 
 export interface Story {

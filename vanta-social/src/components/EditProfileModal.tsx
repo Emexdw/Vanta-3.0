@@ -20,7 +20,14 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ me, onClose,
   const [username, setUsername] = useState(me.username);
   const [bio, setBio] = useState(me.bio);
   const [location, setLocation] = useState(me.location ?? '');
+  const [backgroundUrl,setBackgroundUrl]=useState(me.backgroundUrl||'');
+  const [backgroundFile,setBackgroundFile]=useState<File|null>(null);
+  const [musicUrl,setMusicUrl]=useState(me.musicUrl||'');
+  const [musicFile,setMusicFile]=useState<File|null>(null);
   const [themeColor, setThemeColor] = useState(me.themeColor || '#8b5cf6');
+  const [websiteUrl, setWebsiteUrl] = useState(me.websiteUrl || '');
+  const [profileStyle, setProfileStyle] = useState(me.profileStyle || 'classic');
+  const [bannerStyle, setBannerStyle] = useState(me.bannerStyle || 'aurora');
   const [bannerFile, setBannerFile] = useState<File | null>(null);
   const [bannerPreview, setBannerPreview] = useState(me.bannerUrl || '');
   const bannerRef = useRef<HTMLInputElement>(null);
@@ -87,6 +94,8 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ me, onClose,
     if (!/^[a-z0-9_.]{3,24}$/.test(username)) {
       return setError('Usuario: 3 a 24 caracteres (minúsculas, números, punto o guion bajo).');
     }
+    const link = websiteUrl.trim();
+    if (link && (!/^https:\/\//i.test(link) || link.length > 200)) return setError('El enlace debe comenzar con https:// y tener como máximo 200 caracteres.');
     setBusy(true);
     try {
       let avatarUrl: string | undefined;
@@ -94,11 +103,13 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ me, onClose,
         const blob = await compressImage(avatarFile, 512, 0.85);
         avatarUrl = await api.uploadMedia(me.id, blob, 'jpg', 'image/jpeg');
       }
-      let bannerUrl: string | undefined;
+      let bannerUrl: string | undefined = !bannerPreview ? "" : undefined;
       if (bannerFile) {
         const blob = await compressImage(bannerFile, 1600, 0.82);
         bannerUrl = await api.uploadMedia(me.id, blob, 'jpg', 'image/jpeg');
       }
+      const background = backgroundFile ? await api.uploadMedia(me.id,await compressImage(backgroundFile,1600,.82),'jpg','image/jpeg') : backgroundUrl;
+      const music = musicFile ? await api.uploadMedia(me.id,musicFile,({'audio/mpeg':'mp3','audio/mp4':'m4a','audio/ogg':'ogg','audio/wav':'wav'} as Record<string,string>)[musicFile.type],musicFile.type) : musicUrl;
       await api.updateProfile(me.id, {
         username,
         displayName: displayName.trim() || username,
@@ -106,7 +117,11 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ me, onClose,
         location: location.trim(),
         avatarUrl,
         bannerUrl,
-        themeColor
+        backgroundUrl:background, musicUrl:music,
+        themeColor,
+        websiteUrl: link,
+        profileStyle,
+        bannerStyle
       });
       await onSaved();
       onClose();
@@ -140,12 +155,29 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ me, onClose,
             <span className="absolute bottom-2 right-2 rounded-full bg-black/70 px-3 py-1.5 text-xs text-white">Cambiar portada</span>
           </button>
           <input ref={bannerRef} type="file" accept="image/jpeg,image/png,image/webp" onChange={pickBanner} className="hidden" />
+          <button type="button" className="text-xs text-violet-400" onClick={()=>{setBackgroundFile(null);setBackgroundUrl("");setMusicFile(null);setMusicUrl("");setBannerFile(null);setBannerPreview("");setThemeColor("#8b5cf6");setProfileStyle("classic");setBannerStyle("aurora");}}>Restablecer diseño</button>
+          <label className="block text-xs">Fondo del perfil (independiente de la portada)<input type="file" accept="image/jpeg,image/png,image/webp" onChange={e=>{const f=e.target.files?.[0];if(f&&f.size<=10*1024*1024)setBackgroundFile(f);else if(f)setError('Imagen demasiado grande');}} /></label>
+          <button type="button" onClick={()=>{setBackgroundFile(null);setBackgroundUrl('');}}>Quitar fondo</button>
+          <label className="block text-xs">Música propia o autorizada (máx. 10 MB)<input type="file" accept="audio/mpeg,audio/mp4,audio/ogg,audio/wav" onChange={e=>{const f=e.target.files?.[0];if(f&&['audio/mpeg','audio/mp4','audio/ogg','audio/wav'].includes(f.type)&&f.size<=10*1024*1024)setMusicFile(f);else if(f)setError('Audio no compatible o demasiado grande');}} /></label>
+          <p className="text-xs">{musicFile?.name || (musicUrl?'Música configurada':'Sin música')}</p>
+          <button type="button" onClick={()=>{setMusicFile(null);setMusicUrl('');}}>Quitar música</button>
+          <label className="block text-xs text-zinc-300">Color personalizado <input type="color" value={themeColor} onChange={e=>setThemeColor(e.target.value)} /></label>
           <p className="text-[11px] text-zinc-500">Portada horizontal · JPG, PNG o WebP · máximo 10 MB</p>
           <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Color del perfil">
             {['#8b5cf6', '#ec4899', '#06b6d4', '#22c55e', '#f97316', '#e5e7eb'].map((color) => (
               <button type="button" key={color} aria-label={`Elegir color ${color}`} aria-pressed={themeColor === color} onClick={() => setThemeColor(color)}
                 className={`w-9 h-9 rounded-full border-2 ${themeColor === color ? 'border-white scale-110' : 'border-transparent'}`} style={{ backgroundColor: color }} />
             ))}
+          </div>
+          <div className="space-y-2 pt-2">
+            <label htmlFor="profile-style" className="text-xs font-semibold text-zinc-300">Diseño del perfil</label>
+            <select id="profile-style" className={field} value={profileStyle} onChange={e => setProfileStyle(e.target.value as typeof profileStyle)}>
+              <option value="classic">Clásico</option><option value="compact">Compacto</option><option value="spotlight">Destacado</option>
+            </select>
+            <label htmlFor="banner-style" className="block text-xs font-semibold text-zinc-300">Fondo de portada (sin imagen)</label>
+            <select id="banner-style" className={field} value={bannerStyle} onChange={e => setBannerStyle(e.target.value as typeof bannerStyle)}>
+              <option value="aurora">Aurora</option><option value="gradient">Degradado</option><option value="minimal">Minimalista</option>
+            </select>
           </div>
         </section>
         <div className="flex justify-center">
@@ -167,6 +199,8 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ me, onClose,
           placeholder="Usuario"
         />
         <textarea className={`${field} resize-none`} rows={3} value={bio} onChange={(e) => setBio(e.target.value)} maxLength={160} placeholder="Biografía" />
+        <label htmlFor="website-url" className="block text-xs font-semibold text-zinc-300">Enlace de tu perfil</label>
+        <input id="website-url" className={field} type="url" value={websiteUrl} onChange={e => setWebsiteUrl(e.target.value)} maxLength={200} placeholder="https://tusitio.com" />
         <input className={field} value={location} onChange={(e) => setLocation(e.target.value)} maxLength={60} placeholder="Ubicación" />
 
         {error && (

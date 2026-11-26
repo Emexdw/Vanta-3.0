@@ -1,3 +1,4 @@
+import * as drafts from '../lib/drafts';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { X, ImagePlus, Film } from 'lucide-react';
 import { useModalBehavior } from '../hooks/useModalBehavior';
@@ -14,6 +15,7 @@ export interface CreateInput {
 
 interface CrearModalProps {
   initialType: CreateType;
+  userId: string;
   onClose: () => void;
   onPublish: (input: CreateInput) => Promise<void>;
 }
@@ -26,7 +28,7 @@ const MAX_VIDEO_MB = 50;
 const field =
   'w-full bg-zinc-900 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-white/30 transition-colors';
 
-export const CrearModal: React.FC<CrearModalProps> = ({ initialType, onClose, onPublish }) => {
+export const CrearModal: React.FC<CrearModalProps> = ({ initialType, userId, onClose, onPublish }) => {
   const [type, setType] = useState<CreateType>(initialType);
   const [files, setFiles] = useState<File[]>([]);
   const [caption, setCaption] = useState('');
@@ -40,6 +42,9 @@ export const CrearModal: React.FC<CrearModalProps> = ({ initialType, onClose, on
   const previews = useMemo(() => files.map((f) => URL.createObjectURL(f)), [files]);
   useEffect(() => () => previews.forEach((u) => URL.revokeObjectURL(u)), [previews]);
 
+  const draftKey = `vanta:draft:${userId}:${type}`;
+  const saveDraft = async () => {setBusy(true);try {await drafts.saveDraft(draftKey,{caption,location,sound,files});setError('Borrador guardado en este dispositivo.');}catch{setError('No se pudo guardar el borrador.');}finally{setBusy(false);}};
+  const loadDraft = async () => {setBusy(true);try {const d=await drafts.loadDraft(draftKey) || JSON.parse(localStorage.getItem(draftKey)||'null');if(!d){setError('No hay borrador');return;}setCaption(d.caption||'');setLocation(d.location||'');setSound(d.sound||'');setFiles(d.files||[]);setError(null);}catch{setError('No se pudo abrir el borrador');}finally{setBusy(false);}};
   const maxFiles = type === 'post' ? MAX_IMAGES : 1;
 
   const changeType = (next: CreateType) => {
@@ -68,6 +73,7 @@ export const CrearModal: React.FC<CrearModalProps> = ({ initialType, onClose, on
     setError(null);
     try {
       await onPublish({ type, files, caption: caption.trim(), location: location.trim(), sound: sound.trim() });
+      try {await drafts.deleteDraft(draftKey);localStorage.removeItem(draftKey);} catch {}
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo publicar. Probá de nuevo.');
@@ -98,6 +104,7 @@ export const CrearModal: React.FC<CrearModalProps> = ({ initialType, onClose, on
         </div>
 
         <div className="p-4 space-y-4">
+          <div className="flex gap-2"><button type="button" disabled={busy} onClick={saveDraft} className="flex-1 rounded-xl bg-zinc-800 p-2 text-xs">Guardar borrador</button><button type="button" disabled={busy} onClick={loadDraft} className="flex-1 rounded-xl bg-zinc-800 p-2 text-xs">Recuperar borrador</button></div>
           <div className="flex bg-[#18181b] p-1 rounded-full border border-white/[0.08]">
             {(Object.keys(TYPE_LABELS) as CreateType[]).map((t) => (
               <button
