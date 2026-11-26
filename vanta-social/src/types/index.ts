@@ -11,6 +11,9 @@ export interface User {
   location?: string;
   bannerUrl?: string;
   themeColor?: string;
+  websiteUrl?: string;
+  profileStyle?: 'classic' | 'compact' | 'spotlight';
+  bannerStyle?: 'aurora' | 'gradient' | 'minimal';
 }
 
 export interface Story {

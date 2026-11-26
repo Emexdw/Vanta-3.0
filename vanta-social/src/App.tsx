@@ -29,6 +29,10 @@ interface AppProps {
   onProfileUpdated: () => Promise<void>;
 }
 
+function interestScore(post: Post, interests: string) {
+  const text = `${post.caption} ${post.tags.join(' ')}`.toLowerCase();
+  return interests.toLowerCase().split(',').map(s=>s.trim()).filter(Boolean).reduce((n,s)=>n+Number(text.includes(s)),0);
+}
 const PAGE_SIZE = 15;
 const SWIPE_TOUCH_MIN = 45;
 const SWIPE_MOUSE_MIN = 55;
@@ -37,6 +41,9 @@ const isNoSwipeTarget = (target: EventTarget | null) => target instanceof Elemen
 export default function App({ me, onSignOut, onProfileUpdated }: AppProps) {
   const [activeTab, setActiveTab] = useState<ActiveTab>('inicio');
   const [feedMode, setFeedMode] = useState<FeedMode>('feed');
+  const [interests, setInterests] = useState('');
+  const [repostCollection,setRepostCollection]=useState<Post[] | null>(null);
+  const loadReposts=async()=>{try{const {data,error}=await supabase.from('reposts').select('post_id').order('created_at',{ascending:false}).limit(50);if(error)throw error;const rows=await Promise.all((data??[]).map(r=>api.fetchPostById(me.id,r.post_id)));setRepostCollection(rows.filter((r):r is Post=>r!==null));}catch{showToast('No se pudo cargar la colección de republicaciones.');}};
   const [feedAudience, setFeedAudience] = useState<'forYou' | 'following'>('forYou');
   const [followingFeedIds, setFollowingFeedIds] = useState<string[]>([]);
   const [followingHasMore, setFollowingHasMore] = useState(false);
@@ -175,6 +182,27 @@ export default function App({ me, onSignOut, onProfileUpdated }: AppProps) {
     };
   }, [me.id]);
 
+  // Sincronizar notificaciones al volver a la app o abrir Actividad.
+  // Complementa Realtime cuando el navegador suspende la conexión.
+  useEffect(() => {
+    const sync = async () => {
+      if (document.visibilityState !== 'visible') return;
+      try {
+        setNotifications(await api.fetchNotifications(me.id));
+      } catch {
+        // Mantener la última lista visible si falla la red.
+      }
+    };
+    const onFocus = () => { void sync(); };
+    document.addEventListener('visibilitychange', onFocus);
+    window.addEventListener('focus', onFocus);
+    if (activeTab === 'actividad') void sync();
+    return () => {
+      document.removeEventListener('visibilitychange', onFocus);
+      window.removeEventListener('focus', onFocus);
+    };
+  }, [me.id, activeTab]);
+
   // ---------- Mensajes sin leer (tiempo real) ----------
   const refreshUnread = useCallback(() => {
     api.unreadMessages().then(setMessageUnread).catch(() => {});
@@ -273,6 +301,7 @@ export default function App({ me, onSignOut, onProfileUpdated }: AppProps) {
     setSavedIds((prev) => (saved ? (prev.includes(id) ? prev : [id, ...prev]) : prev.filter((x) => x !== id)));
     api.setBookmark(me.id, id, saved).catch(() => {
       patchPost(id, { isBookmarked: p.isBookmarked });
+      setSavedIds(prev => p.isBookmarked ? Array.from(new Set([id, ...prev])) : prev.filter(x=>x!==id));
       showToast('No se pudo guardar.');
     });
   };
@@ -306,7 +335,7 @@ export default function App({ me, onSignOut, onProfileUpdated }: AppProps) {
   const handleViewClip = useCallback((clipId: string) => {
     if (viewedClips.current.has(clipId)) return;
     viewedClips.current.add(clipId);
-    api.incrementViews(clipId).catch(() => {});
+    api.incrementViews(clipId).catch(() => { viewedClips.current.delete(clipId); });
   }, []);
 
   const loadMoreFeed = async () => {
@@ -684,6 +713,8 @@ export default function App({ me, onSignOut, onProfileUpdated }: AppProps) {
                         </button>
                       </div>
 
+                      {feedAudience === 'forYou' && <div className="px-4 py-2"><label className="text-xs text-zinc-400">Intereses (separados por comas; vacío = cronológico)<input value={interests} maxLength={150} onChange={e=>setInterests(e.target.value)} className="block w-full rounded-xl bg-zinc-900 p-2 text-white" placeholder="Música, fotografía, arte" /></label></div>}
+                      <div className="px-4 py-2"><button className="text-sm text-violet-300" onClick={()=>repostCollection===null?void loadReposts():setRepostCollection(null)}>{repostCollection===null?'Mi colección de republicaciones':'Cerrar colección'}</button>{repostCollection!==null && <div className="space-y-2 mt-2">{repostCollection.length===0?'Colección vacía':repostCollection.map(p=><button key={p.id} className="block text-left text-sm text-zinc-200" onClick={()=>setSharingPost(p)}>@{p.user.username} · {p.caption || p.kind}</button>)}</div>}</div>
                       {followingLoading && feedAudience === 'following' ? (
                         <p role="status" className="text-center text-zinc-400 text-sm py-16">Cargando publicaciones de tus seguidos...</p>
                       ) : visibleFeed.length === 0 ? (
@@ -701,7 +732,7 @@ export default function App({ me, onSignOut, onProfileUpdated }: AppProps) {
                         </div>
                       ) : (
                         <div className="space-y-1 pb-16">
-                          {visibleFeed.map((post) => (
+                          {(feedAudience === "forYou" && interests.trim() ? [...visibleFeed].sort((a,b)=>interestScore(b,interests)-interestScore(a,interests)) : visibleFeed).map((post) => (
                             <PostCard key={post.id} post={post} onPlayClip={() => openClip(post.id)} {...cardHandlers(post)} />
                           ))}
                           {(feedAudience === 'following' ? followingHasMore : hasMoreFeed) && (
@@ -729,6 +760,7 @@ export default function App({ me, onSignOut, onProfileUpdated }: AppProps) {
                     <div className="p-2 sm:p-4">
                       <TikTokReelView
                         key={clipsKey}
+                        suspended={messagesOpen}
                         clips={clips}
                         isMuted={isMuted}
                         onToggleMute={() => setIsMuted(soundEngine.toggleMute())}
@@ -772,6 +804,8 @@ export default function App({ me, onSignOut, onProfileUpdated }: AppProps) {
             <div className="pb-24">
               <UserProfileModal
                 variant="page"
+                viewerId={me.id}
+                onOpenProfile={(u) => void openProfile(u)}
                 user={me}
                 isCurrentUser
                 posts={myPosts}
@@ -825,6 +859,8 @@ export default function App({ me, onSignOut, onProfileUpdated }: AppProps) {
       {viewingProfile && !(activeTab === 'perfil' && viewingProfile.id === me.id) && (
         <UserProfileModal
           variant="modal"
+          viewerId={me.id}
+          onOpenProfile={(u) => void openProfile(u)}
           user={viewingProfile.id === me.id ? me : viewingProfile}
           isCurrentUser={viewingProfile.id === me.id}
           posts={viewedPosts}

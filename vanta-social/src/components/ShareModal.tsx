@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { X, Link2, Share, MessageCircle, Send } from 'lucide-react';
+import { supabase } from '../lib/supabase';
 import { Post } from '../types';
 import { soundEngine } from '../utils/audioSynth';
 import { useModalBehavior } from '../hooks/useModalBehavior';
@@ -12,6 +13,10 @@ interface ShareModalProps {
 export const ShareModal: React.FC<ShareModalProps> = ({ post, onClose }) => {
   const [toast, setToast] = useState<string | null>(null);
   useModalBehavior(onClose);
+  const [reposted,setReposted]=useState(false);
+  const [repostBusy,setRepostBusy]=useState(true);
+  useEffect(()=>{let alive=true;setRepostBusy(true);supabase.from('reposts').select('post_id').eq('post_id',post.id).maybeSingle().then(({data,error})=>{if(alive){setReposted(!!data);setRepostBusy(!!error);}});return()=>{alive=false;};},[post.id]);
+  const toggleRepost=async()=>{setRepostBusy(true);try{const {data:{user}}=await supabase.auth.getUser();if(!user)throw new Error('Sin sesión');const {error}=reposted?await supabase.from('reposts').delete().eq('user_id',user.id).eq('post_id',post.id):await supabase.from('reposts').insert({user_id:user.id,post_id:post.id});if(error)throw error;setReposted(!reposted);flash(reposted?'Quitado de tu colección':'Añadido a tu colección');}catch{flash('No se pudo actualizar la colección');}finally{setRepostBusy(false);}};
 
   // App.tsx abre el contenido cuando alguien entra con ?p=ID
   const link = `${window.location.origin}/?p=${post.id}`;
@@ -74,6 +79,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({ post, onClose }) => {
           </div>
         </div>
 
+        <button className="w-full mb-3 py-2 rounded-xl bg-violet-600 text-white text-sm disabled:opacity-50" disabled={repostBusy} onClick={toggleRepost}>{reposted?"Quitar de mi colección de republicaciones":"Añadir a mi colección de republicaciones"}</button>
         <div className="grid grid-cols-3 gap-2">
           <button onClick={copyLink} className={btn}>
             <Link2 className="w-5 h-5" />
